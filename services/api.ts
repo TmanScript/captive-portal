@@ -1,17 +1,23 @@
+import { RegistrationPayload, LoginPayload } from "../types";
+import { API_ENDPOINT } from "../constants";
 
-import { RegistrationPayload, LoginPayload } from '../types';
-import { API_ENDPOINT } from '../constants';
+/**
+ * We are removing the CORS proxy because in a hotspot environment,
+ * adding more external domains like corsproxy.io increases the chance of
+ * being blocked by the Walled Garden.
+ *
+ * The Onetel API at device.onetel.co.za is expected to handle CORS
+ * for its own captive portal users.
+ */
 
-const PROXY_URL = 'https://corsproxy.io/?';
-
-const getProxyUrl = (url: string) => `${PROXY_URL}${encodeURIComponent(url)}`;
-
-export const registerUser = async (data: RegistrationPayload): Promise<Response> => {
-  return await fetch(getProxyUrl(API_ENDPOINT), {
-    method: 'POST',
+export const registerUser = async (
+  data: RegistrationPayload,
+): Promise<Response> => {
+  return await fetch(API_ENDPOINT, {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      "Content-Type": "application/json",
+      Accept: "application/json",
     },
     body: JSON.stringify(data),
   });
@@ -19,11 +25,11 @@ export const registerUser = async (data: RegistrationPayload): Promise<Response>
 
 export const loginUser = async (data: LoginPayload): Promise<Response> => {
   const url = `${API_ENDPOINT}token/`;
-  return await fetch(getProxyUrl(url), {
-    method: 'POST',
+  return await fetch(url, {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      "Content-Type": "application/json",
+      Accept: "application/json",
     },
     body: JSON.stringify(data),
   });
@@ -31,36 +37,39 @@ export const loginUser = async (data: LoginPayload): Promise<Response> => {
 
 export const getUsage = async (token: string): Promise<Response> => {
   const url = `${API_ENDPOINT}usage/`;
-  return await fetch(getProxyUrl(url), {
-    method: 'GET',
+  return await fetch(url, {
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/json',
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
     },
   });
 };
 
 export const requestOtp = async (token: string): Promise<Response> => {
   const url = `${API_ENDPOINT}phone/token/`;
-  return await fetch(getProxyUrl(url), {
-    method: 'POST',
+  return await fetch(url, {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
     },
-    body: '',
+    body: "",
   });
 };
 
-export const verifyOtp = async (token: string, code: string): Promise<Response> => {
+export const verifyOtp = async (
+  token: string,
+  code: string,
+): Promise<Response> => {
   const url = `${API_ENDPOINT}phone/verify/`;
-  return await fetch(getProxyUrl(url), {
-    method: 'POST',
+  return await fetch(url, {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
     },
     body: JSON.stringify({ code }),
   });

@@ -61,8 +61,8 @@
           margin-bottom: 1.5rem;
         "
       >
-        The portal is trying to load but the router is blocking <b>GitHub</b> or
-        <b>ESM.sh</b>.
+        The portal is trying to load but the hotspot is blocking external
+        connections.
       </p>
       <div
         style="
@@ -82,7 +82,7 @@
             margin-bottom: 0.5rem;
           "
         >
-          Admin Fix:
+          Walled Garden Requirement:
         </p>
         <p
           style="
@@ -92,7 +92,7 @@
             word-break: break-all;
           "
         >
-          Add <b>tmanscript.github.io, esm.sh, cdn.tailwindcss.com</b> to your
+          Add <b>tmanscript.github.io, device.onetel.co.za, esm.sh</b> to your
           <b>uamallowed</b> list.
         </p>
       </div>
@@ -115,13 +115,13 @@
     </div>
 
     <script type="module">
-      // If the root is still empty after 6 seconds, the scripts likely failed to load
+      // If the root is still empty after 7 seconds, show diagnostics
       setTimeout(() => {
         const root = document.getElementById("root");
         if (root && root.innerHTML.trim() === "") {
           document.getElementById("fallback-message").style.display = "block";
         }
-      }, 6000);
+      }, 7000);
     </script>
 
     <script type="module" src="./index.tsx"></script>

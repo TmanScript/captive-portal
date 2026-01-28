@@ -14,6 +14,7 @@ import {
   ShoppingCart,
   Copy,
   Info,
+  AlertTriangle,
 } from "lucide-react";
 import Input from "./components/Input";
 import { RegistrationPayload, UsageResponse } from "./types";
@@ -63,8 +64,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-
-    // Some routers wrap everything in a "loginurl" param, try to parse that too
     const loginUrl = params.get("loginurl");
     let targetParams = params;
 
@@ -72,9 +71,7 @@ const App: React.FC = () => {
       try {
         const decodedUrl = new URL(decodeURIComponent(loginUrl));
         targetParams = decodedUrl.searchParams;
-      } catch (e) {
-        // Fallback to top level params
-      }
+      } catch (e) {}
     }
 
     const uamip =
@@ -131,10 +128,12 @@ const App: React.FC = () => {
           setStep("OTP_VERIFY");
         }
       } else {
-        setErrorMessage(data.detail || "Registration failed.");
+        setErrorMessage(data.detail || "Registration failed. Check details.");
       }
     } catch (err) {
-      setErrorMessage("Network error.");
+      setErrorMessage(
+        "Network Error: Cannot reach Onetel Server. Check Walled Garden.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -158,17 +157,18 @@ const App: React.FC = () => {
           const remainingBytes = check.value - check.result;
           const remainingMB = (remainingBytes / (1024 * 1024)).toFixed(2);
           const hasData = remainingBytes > 0;
-
           setUsageData({ remainingMB, hasData });
           setStep("USAGE_INFO");
         } else {
           setStep("SUCCESS");
         }
       } else {
-        setErrorMessage(data.detail || "Invalid login details.");
+        setErrorMessage(data.detail || "Incorrect phone number or password.");
       }
     } catch (err) {
-      setErrorMessage("Login failed. Check your connection.");
+      setErrorMessage(
+        'Connection Error: The hotspot is blocking the login server. Ensure "device.onetel.co.za" is allowed.',
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -189,10 +189,9 @@ const App: React.FC = () => {
   };
 
   const connectToRouter = () => {
-    // CoovaChilli login redirection
     const loginUrl = `http://${uamParams.uamip}:${uamParams.uamport}/logon`;
     const form = document.createElement("form");
-    form.method = "GET"; // Chilli usually expects GET for simple UAM
+    form.method = "GET";
     form.action = loginUrl;
 
     const params = {
@@ -214,7 +213,7 @@ const App: React.FC = () => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert("Value copied to clipboard!");
+    alert("Value copied!");
   };
 
   const renderContent = () => {
@@ -330,15 +329,18 @@ const App: React.FC = () => {
                   icon={<Lock className="w-4 h-4" />}
                   required
                 />
+
                 {errorMessage && (
-                  <div className="text-red-500 text-xs font-bold bg-red-50 p-3 rounded-lg border border-red-100">
-                    {errorMessage}
+                  <div className="text-red-600 text-[11px] leading-tight font-bold bg-red-50 p-3 rounded-xl border border-red-100 flex gap-2 items-start">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    <span>{errorMessage}</span>
                   </div>
                 )}
+
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 bg-pink-500 text-white font-bold rounded-2xl shadow-xl flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-pink-500 text-white font-bold rounded-2xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
                 >
                   {isSubmitting ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -426,7 +428,7 @@ const App: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 bg-pink-500 text-white font-bold rounded-2xl shadow-xl flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-pink-500 text-white font-bold rounded-2xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
                 >
                   {isSubmitting ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -467,7 +469,7 @@ const App: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 bg-pink-500 text-white font-bold rounded-2xl shadow-xl"
+                  className="w-full py-4 bg-pink-500 text-white font-bold rounded-2xl shadow-xl transition-all active:scale-95"
                 >
                   {isSubmitting ? (
                     <Loader2 className="w-5 h-5 animate-spin mx-auto" />
@@ -484,7 +486,7 @@ const App: React.FC = () => {
   };
 
   const WALLED_GARDEN =
-    "tmanscript.github.io,github.io,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,corsproxy.io,device.onetel.co.za";
+    "device.onetel.co.za,tmanscript.github.io,github.io,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com";
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 bg-[#fdf2f8]">
@@ -504,7 +506,7 @@ const App: React.FC = () => {
           <div className="bg-white border-2 border-pink-100 rounded-3xl p-6 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-xs font-black text-pink-500 uppercase tracking-widest flex items-center gap-2">
-                <Info className="w-4 h-4" /> OpenWISP Configuration Settings
+                <Info className="w-4 h-4" /> Final Walled Garden Config
               </h4>
               <button
                 onClick={() => setShowHelper(false)}
@@ -517,24 +519,7 @@ const App: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">
-                  uamhomepage / uamserver / chilli_login_page
-                </p>
-                <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-100">
-                  <code className="text-[10px] font-mono text-gray-600 truncate flex-1">
-                    {currentUrl}
-                  </code>
-                  <button
-                    onClick={() => copyToClipboard(currentUrl)}
-                    className="p-1.5 bg-white text-pink-500 rounded-lg shadow-sm border border-pink-100"
-                  >
-                    <Copy className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">
-                  uamallowed (The Walled Garden)
+                  uamallowed (Walled Garden List)
                 </p>
                 <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-100">
                   <code className="text-[10px] font-mono text-gray-600 truncate flex-1 leading-tight">
@@ -552,15 +537,15 @@ const App: React.FC = () => {
 
             <div className="mt-4 p-3 bg-pink-50 rounded-xl">
               <p className="text-[9px] text-pink-600 font-medium leading-normal italic">
-                * Paste these values into your OpenWISP Hotspot settings.
-                Without the "uamallowed" domains, your portal will not load
-                properly for users.
+                * If login still says "Connection Error", check that your router
+                can resolve <strong>device.onetel.co.za</strong> and that it is
+                explicitly whitelisted.
               </p>
             </div>
           </div>
         )}
         <p className="mt-6 text-center text-gray-400 text-[10px] font-black uppercase tracking-widest">
-          Onetel Network • Captive Gateway v2.6
+          Onetel Network • Captive Gateway v2.7
         </p>
       </div>
     </div>
