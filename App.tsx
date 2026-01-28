@@ -21,7 +21,11 @@ import {
   RefreshCw,
   ArrowLeft,
   KeyRound,
+  CreditCard,
+  TrendingUp,
+  Tag,
 } from "lucide-react";
+import CryptoJS from "crypto-js";
 import Input from "./components/Input";
 import { RegistrationPayload, UsageResponse } from "./types";
 import { DEFAULT_PLAN_UUID } from "./constants";
@@ -33,7 +37,13 @@ import {
   getUsage,
 } from "./services/api";
 
-type Step = "REGISTRATION" | "OTP_VERIFY" | "LOGIN" | "USAGE_INFO" | "SUCCESS";
+type Step =
+  | "REGISTRATION"
+  | "OTP_VERIFY"
+  | "LOGIN"
+  | "USAGE_INFO"
+  | "SUCCESS"
+  | "BUY_DATA";
 
 interface DomainStatus {
   domain: string;
@@ -70,7 +80,11 @@ const App: React.FC = () => {
   const [diagnostics, setDiagnostics] = useState<DomainStatus[]>([
     { domain: "corsproxy.io", label: "CORS Bridge", status: "checking" },
     { domain: "device.onetel.co.za", label: "Auth Server", status: "checking" },
-    { domain: "esm.sh", label: "App Core", status: "checking" },
+    {
+      domain: "sandbox.payfast.co.za",
+      label: "Payment Gateway",
+      status: "checking",
+    },
     {
       domain: "tmanscript.github.io",
       label: "Portal Host",
@@ -181,21 +195,16 @@ const App: React.FC = () => {
       if (response.ok) {
         const token = data.token || data.key || data.token_key;
         setAuthToken(token);
-        // After registration, request an OTP
         await requestOtp(token);
         setStep("OTP_VERIFY");
       } else {
         setErrorMessage(
-          data.detail ||
-            data.username?.[0] ||
-            "Registration failed. Check details.",
+          data.detail || data.username?.[0] || "Registration failed.",
         );
       }
     } catch (err) {
       setIsNetworkError(true);
-      setErrorMessage(
-        "Network error during registration. Check router settings.",
-      );
+      setErrorMessage("Network error during registration.");
     } finally {
       setIsSubmitting(false);
     }
@@ -211,7 +220,6 @@ const App: React.FC = () => {
       const data = await parseResponse(response);
 
       if (response.ok) {
-        // Automatically try to log in after OTP success
         setLoginData({
           username: formData.username,
           password: formData.password1,
@@ -219,10 +227,10 @@ const App: React.FC = () => {
         setStep("LOGIN");
         setErrorMessage("Verification successful! Please sign in.");
       } else {
-        setErrorMessage(data.detail || "Invalid code. Please try again.");
+        setErrorMessage(data.detail || "Invalid code.");
       }
     } catch (err) {
-      setErrorMessage("Failed to verify OTP. Check connection.");
+      setErrorMessage("Failed to verify OTP.");
     } finally {
       setIsSubmitting(false);
     }
@@ -266,6 +274,72 @@ const App: React.FC = () => {
     }
   };
 
+  const redirectToPayfast = (amount: number, itemName: string) => {
+    const merchantId = "10044903";
+    const merchantKey = "sehmxs4lv5yi3";
+    const passphrase = "onetel_sandbox_2026";
+
+    // Construct a safe absolute URL.
+    // Captive portals often return "null" for window.location.origin
+    let protocol = window.location.protocol;
+    if (protocol === "file:") protocol = "https:";
+
+    let host = window.location.host;
+    if (!host || host === "null") host = "tmanscript.github.io";
+
+    let pathname = window.location.pathname;
+    if (!pathname || pathname === "blank") pathname = "/captive-portal/";
+
+    const safeBaseUrl = `${protocol}//${host}${pathname}`;
+    const returnUrl = safeBaseUrl;
+    const cancelUrl = safeBaseUrl;
+
+    // Parameters MUST be in this specific order for Payfast signature consistency
+    const data: Record<string, string> = {
+      merchant_id: merchantId,
+      merchant_key: merchantKey,
+      return_url: returnUrl,
+      cancel_url: cancelUrl,
+      amount: amount.toFixed(2),
+      item_name: itemName,
+    };
+
+    // Construct signature string strictly
+    let signatureStr = "";
+    const keys = [
+      "merchant_id",
+      "merchant_key",
+      "return_url",
+      "cancel_url",
+      "amount",
+      "item_name",
+    ];
+
+    keys.forEach((key) => {
+      signatureStr += `${key}=${encodeURIComponent(data[key].trim()).replace(/%20/g, "+")}&`;
+    });
+    signatureStr += `passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, "+")}`;
+
+    const signature = CryptoJS.MD5(signatureStr).toString();
+    data["signature"] = signature;
+
+    // Create form and submit via POST
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "https://sandbox.payfast.co.za/eng/process";
+
+    Object.entries(data).forEach(([key, value]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+  };
+
   const connectToRouter = () => {
     const loginUrl = `http://${uamParams.uamip}:${uamParams.uamport}/logon`;
     const form = document.createElement("form");
@@ -295,9 +369,81 @@ const App: React.FC = () => {
   };
 
   const WALLED_GARDEN =
-    "device.onetel.co.za,corsproxy.io,tmanscript.github.io,github.io,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,cdnjs.cloudflare.com,umoja.network.coova.org";
+    "device.onetel.co.za,corsproxy.io,sandbox.payfast.co.za,tmanscript.github.io,github.io,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,cdnjs.cloudflare.com,umoja.network.coova.org";
 
   const renderContent = () => {
+    // Step: Buy Data
+    if (step === "BUY_DATA") {
+      return (
+        <div className="max-w-2xl w-full bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-pink-100 animate-in zoom-in duration-300">
+          <div className="p-8 sm:p-12">
+            <button
+              onClick={() => setStep("USAGE_INFO")}
+              className="flex items-center gap-2 text-pink-500 font-bold text-xs uppercase mb-8 hover:translate-x-[-4px] transition-transform"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <div className="text-center mb-10">
+              <h2 className="text-3xl font-black text-gray-900 mb-2">
+                Select a Data Plan
+              </h2>
+              <p className="text-gray-500">
+                Fast, reliable data for all your internet needs.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <button
+                onClick={() => redirectToPayfast(5, "Onetel 1GB Data")}
+                className="group relative bg-white border-2 border-pink-50 p-6 rounded-3xl text-left hover:border-pink-500 hover:shadow-xl transition-all active:scale-95"
+              >
+                <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-pink-500 group-hover:text-white transition-colors">
+                  <Tag className="w-6 h-6 text-pink-500 group-hover:text-white" />
+                </div>
+                <h4 className="text-2xl font-black text-gray-900 mb-1">1GB</h4>
+                <p className="text-gray-400 text-sm mb-4">Valid for 24 Hours</p>
+                <div className="flex items-baseline gap-1 text-pink-500">
+                  <span className="text-sm font-bold">R</span>
+                  <span className="text-4xl font-black">5</span>
+                </div>
+                <div className="mt-6 w-full py-3 bg-gray-50 text-gray-900 font-bold text-sm text-center rounded-xl group-hover:bg-pink-500 group-hover:text-white transition-all">
+                  Purchase Now
+                </div>
+              </button>
+
+              <button
+                onClick={() => redirectToPayfast(50, "Onetel 10GB Data")}
+                className="group relative bg-pink-500 border-2 border-pink-500 p-6 rounded-3xl text-left hover:shadow-pink-200 hover:shadow-2xl transition-all active:scale-95"
+              >
+                <div className="absolute -top-3 right-6 bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
+                  Best Value
+                </div>
+                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
+                  <TrendingUp className="w-6 h-6 text-white" />
+                </div>
+                <h4 className="text-2xl font-black text-white mb-1">10GB</h4>
+                <p className="text-pink-100/70 text-sm mb-4">
+                  Valid for 30 Days
+                </p>
+                <div className="flex items-baseline gap-1 text-white">
+                  <span className="text-sm font-bold">R</span>
+                  <span className="text-4xl font-black">50</span>
+                </div>
+                <div className="mt-6 w-full py-3 bg-white text-pink-500 font-bold text-sm text-center rounded-xl transition-all">
+                  Purchase Now
+                </div>
+              </button>
+            </div>
+
+            <p className="mt-10 text-center text-gray-400 text-[10px] font-medium uppercase tracking-[0.2em]">
+              <CreditCard className="w-3 h-3 inline mr-1 mb-0.5" /> Payments
+              Secured by Payfast
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     // Step: Registration
     if (step === "REGISTRATION") {
       return (
@@ -309,8 +455,8 @@ const App: React.FC = () => {
                 Join Onetel
               </h2>
               <p className="text-pink-100 font-medium opacity-90">
-                Create your account to start enjoying high-speed internet access
-                across our network coverage.
+                Create your account to start enjoying high-speed internet
+                access.
               </p>
             </div>
             <div className="relative z-10 bg-black/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
@@ -337,7 +483,7 @@ const App: React.FC = () => {
               onClick={() => setStep("LOGIN")}
               className="flex items-center gap-2 text-pink-500 font-bold text-xs uppercase mb-6 hover:translate-x-[-4px] transition-transform"
             >
-              <ArrowLeft className="w-4 h-4" /> Back to Login
+              <ArrowLeft className="w-4 h-4" /> Back
             </button>
             <h3 className="text-2xl font-bold mb-6 text-gray-900">
               Create Account
@@ -510,7 +656,7 @@ const App: React.FC = () => {
               </p>
             </div>
           )}
-          <p className="text-gray-600 mb-8 text-sm">
+          <p className="text-gray-600 mb-8 text-sm text-balance">
             Your account is ready. Click below to activate your high-speed
             internet session.
           </p>
@@ -548,7 +694,10 @@ const App: React.FC = () => {
             Please purchase a top-up bundle to continue.
           </p>
           <div className="space-y-3">
-            <button className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95">
+            <button
+              onClick={() => setStep("BUY_DATA")}
+              className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95"
+            >
               Buy Data Bundle <ShoppingCart className="w-5 h-5" />
             </button>
             <button
@@ -701,7 +850,7 @@ const App: React.FC = () => {
 
       <p className="mt-8 text-center text-gray-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
         <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-        Onetel Network • Gateway Core v3.3
+        Onetel Network • Gateway Core v3.5
       </p>
     </div>
   );
