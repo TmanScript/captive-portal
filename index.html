@@ -93,10 +93,10 @@
             word-break: break-all;
           "
         >
-          Add
+          Add:
           <b
-            >tmanscript.github.io, device.onetel.co.za, esm.sh,
-            sandbox.payfast.co.za</b
+            >tmanscript.github.io, api.allorigins.win, corsproxy.io,
+            api.codetabs.com, device.onetel.co.za, esm.sh</b
           >
           to your <b>uamallowed</b> list.
         </p>
@@ -120,13 +120,13 @@
     </div>
 
     <script type="module">
-      // If the root is still empty after 7 seconds, show diagnostics
+      // If the root is still empty after 10 seconds, show diagnostics
       setTimeout(() => {
         const root = document.getElementById("root");
         if (root && root.innerHTML.trim() === "") {
           document.getElementById("fallback-message").style.display = "block";
         }
-      }, 7000);
+      }, 10000);
     </script>
 
     <script type="module" src="./index.tsx"></script>

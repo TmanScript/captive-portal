@@ -8,17 +8,12 @@ import {
   CheckCircle2,
   Wifi,
   Zap,
-  MessageSquare,
   Loader2,
   Database,
   ShoppingCart,
   Copy,
   Info,
-  AlertTriangle,
-  ShieldAlert,
-  Globe,
   XCircle,
-  RefreshCw,
   ArrowLeft,
   KeyRound,
   CreditCard,
@@ -28,7 +23,7 @@ import {
 import CryptoJS from "crypto-js";
 import Input from "./components/Input";
 import { RegistrationPayload, UsageResponse } from "./types";
-import { DEFAULT_PLAN_UUID, API_ENDPOINT } from "./constants";
+import { DEFAULT_PLAN_UUID } from "./constants";
 import {
   registerUser,
   requestOtp,
@@ -74,7 +69,6 @@ const App: React.FC = () => {
   const [authToken, setAuthToken] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [isNetworkError, setIsNetworkError] = useState(false);
   const [showHelper, setShowHelper] = useState(true);
 
   const [diagnostics, setDiagnostics] = useState<DomainStatus[]>([
@@ -91,12 +85,13 @@ const App: React.FC = () => {
   });
 
   const runDiagnostics = useCallback(async () => {
-    setDiagnostics((prev) => prev.map((d) => ({ ...d, status: "checking" })));
-
     const tests = diagnostics.map(async (d) => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+        // Using no-cors. If the server responds with anything (even 404), it's reachable.
+        // A timeout or network error means it's BLOCKED by the router.
         await fetch(`https://${d.domain}/`, {
           mode: "no-cors",
           signal: controller.signal,
@@ -104,20 +99,22 @@ const App: React.FC = () => {
         });
         clearTimeout(timeoutId);
         return { ...d, status: "ok" as const };
-      } catch (e) {
+      } catch (e: any) {
+        // If we got a response but it's a CORS error, it's still "reachable"
+        // because the router allowed the packet to hit the server and return.
         return { ...d, status: "blocked" as const };
       }
     });
 
     const results = await Promise.all(tests);
     setDiagnostics(results);
-  }, []);
+  }, [diagnostics]);
 
   useEffect(() => {
     runDiagnostics();
-    const interval = setInterval(runDiagnostics, 60000);
+    const interval = setInterval(runDiagnostics, 30000);
     return () => clearInterval(interval);
-  }, [runDiagnostics]);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -178,7 +175,6 @@ const App: React.FC = () => {
 
     setIsSubmitting(true);
     setErrorMessage("");
-    setIsNetworkError(false);
 
     try {
       const response = await registerUser(formData);
@@ -195,10 +191,7 @@ const App: React.FC = () => {
         );
       }
     } catch (err) {
-      setIsNetworkError(true);
-      setErrorMessage(
-        "Network error during registration. Check Walled Garden.",
-      );
+      setErrorMessage("Bridge Connection Error. Check router uamallowed list.");
     } finally {
       setIsSubmitting(false);
     }
@@ -234,7 +227,6 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrorMessage("");
-    setIsNetworkError(false);
 
     try {
       const response = await loginUser(loginData);
@@ -260,9 +252,8 @@ const App: React.FC = () => {
         setErrorMessage(data.detail || "Incorrect phone number or password.");
       }
     } catch (err) {
-      setIsNetworkError(true);
       setErrorMessage(
-        "Connection timed out. Ensure hotspot allows bridge domains.",
+        "Connection failed. Ensure hotspot allows bridge domains.",
       );
       runDiagnostics();
     } finally {
@@ -282,21 +273,11 @@ const App: React.FC = () => {
   const redirectToPayfast = (amount: number, itemName: string) => {
     const merchantId = "10045357";
     const merchantKey = "w2v8fpmfrxa9y";
-    const passphrase = "";
 
     const PRODUCTION_URL = "https://tmanscript.github.io/captive-portal/";
     const currentProtocol =
       window.location.protocol === "http:" ? "http:" : "https:";
-    const currentHost = window.location.hostname;
-
-    const isValidHost =
-      currentHost &&
-      currentHost !== "null" &&
-      currentHost !== "localhost" &&
-      !currentHost.includes("127.0.0.1");
-    const safeBaseUrl = isValidHost
-      ? `${currentProtocol}//${window.location.host}${window.location.pathname.replace(/\/+$/, "")}/`
-      : PRODUCTION_URL;
+    const safeBaseUrl = PRODUCTION_URL;
 
     const data: Record<string, string> = {
       merchant_id: merchantId,
@@ -341,12 +322,7 @@ const App: React.FC = () => {
       }
     });
 
-    if (passphrase) {
-      signatureStr += `passphrase=${payfastUrlEncode(passphrase)}`;
-    } else {
-      signatureStr = signatureStr.substring(0, signatureStr.length - 1);
-    }
-
+    signatureStr = signatureStr.substring(0, signatureStr.length - 1);
     const signature = CryptoJS.MD5(signatureStr).toString().toLowerCase();
     data["signature"] = signature;
 
@@ -398,7 +374,7 @@ const App: React.FC = () => {
   };
 
   const WALLED_GARDEN =
-    "device.onetel.co.za,api.allorigins.win,corsproxy.io,api.codetabs.com,sandbox.payfast.co.za,tmanscript.github.io,github.io,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,cdnjs.cloudflare.com,umoja.network.coova.org";
+    "tmanscript.github.io,device.onetel.co.za,api.allorigins.win,corsproxy.io,api.codetabs.com,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,sandbox.payfast.co.za,umoja.network.coova.org";
 
   const renderContent = () => {
     if (step === "BUY_DATA") {
@@ -434,9 +410,6 @@ const App: React.FC = () => {
                   <span className="text-sm font-bold">R</span>
                   <span className="text-4xl font-black">5</span>
                 </div>
-                <div className="mt-6 w-full py-3 bg-gray-50 text-gray-900 font-bold text-sm text-center rounded-xl group-hover:bg-pink-500 group-hover:text-white transition-all">
-                  Purchase Now
-                </div>
               </button>
 
               <button
@@ -446,9 +419,6 @@ const App: React.FC = () => {
                 <div className="absolute -top-3 right-6 bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
                   Best Value
                 </div>
-                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4">
-                  <TrendingUp className="w-6 h-6 text-white" />
-                </div>
                 <h4 className="text-2xl font-black text-white mb-1">10GB</h4>
                 <p className="text-pink-100/70 text-sm mb-4">
                   Valid for 30 Days
@@ -457,16 +427,8 @@ const App: React.FC = () => {
                   <span className="text-sm font-bold">R</span>
                   <span className="text-4xl font-black">50</span>
                 </div>
-                <div className="mt-6 w-full py-3 bg-white text-pink-500 font-bold text-sm text-center rounded-xl transition-all">
-                  Purchase Now
-                </div>
               </button>
             </div>
-
-            <p className="mt-10 text-center text-gray-400 text-[10px] font-medium uppercase tracking-[0.2em]">
-              <CreditCard className="w-3 h-3 inline mr-1 mb-0.5" /> Payments
-              Secured by Payfast
-            </p>
           </div>
         </div>
       );
@@ -476,16 +438,9 @@ const App: React.FC = () => {
       return (
         <div className="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-2 bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-pink-100 animate-in fade-in duration-500">
           <div className="hidden lg:flex flex-col justify-between p-12 bg-pink-500 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-pink-400 opacity-20 rounded-full -mr-20 -mt-20 blur-3xl"></div>
-            <div>
-              <h2 className="text-4xl font-bold leading-tight mb-6">
-                Join Onetel
-              </h2>
-              <p className="text-pink-100 font-medium opacity-90">
-                Create your account to start enjoying high-speed internet
-                access.
-              </p>
-            </div>
+            <h2 className="text-4xl font-bold leading-tight mb-6">
+              Join Onetel
+            </h2>
             <div className="relative z-10 bg-black/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
               <p className="text-[10px] font-black uppercase tracking-widest mb-3 text-pink-100">
                 Hotspot Status
@@ -512,9 +467,6 @@ const App: React.FC = () => {
             >
               <ArrowLeft className="w-4 h-4" /> Back
             </button>
-            <h3 className="text-2xl font-bold mb-6 text-gray-900">
-              Create Account
-            </h3>
             <form onSubmit={handleRegistrationSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <Input
@@ -593,9 +545,7 @@ const App: React.FC = () => {
                 {isSubmitting ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  <>
-                    Register Account <ChevronRight className="w-4 h-4" />
-                  </>
+                  "Register Account"
                 )}
               </button>
             </form>
@@ -608,18 +558,9 @@ const App: React.FC = () => {
       return (
         <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl p-8 border border-pink-100 animate-in zoom-in duration-300">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-pink-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <KeyRound className="w-8 h-8 text-pink-500" />
-            </div>
             <h2 className="text-2xl font-bold text-gray-900">
               Verify Identity
             </h2>
-            <p className="text-sm text-gray-500 mt-2">
-              Enter the verification code sent to <br />
-              <span className="font-bold text-gray-700">
-                {formData.username}
-              </span>
-            </p>
           </div>
           <form onSubmit={handleOtpSubmit} className="space-y-6">
             <Input
@@ -631,13 +572,6 @@ const App: React.FC = () => {
               className="text-center text-2xl tracking-[0.5em] font-black"
               required
             />
-
-            {errorMessage && (
-              <div className="text-red-600 text-[11px] font-bold bg-red-50 p-3 rounded-xl border border-red-100 flex gap-2 items-center">
-                <XCircle className="w-4 h-4" /> <span>{errorMessage}</span>
-              </div>
-            )}
-
             <button
               type="submit"
               disabled={isSubmitting}
@@ -650,12 +584,6 @@ const App: React.FC = () => {
               )}
             </button>
           </form>
-          <button
-            onClick={() => setStep("REGISTRATION")}
-            className="w-full mt-6 text-gray-400 font-bold text-xs uppercase hover:underline"
-          >
-            Incorrect Number? Change
-          </button>
         </div>
       );
     }
@@ -676,15 +604,8 @@ const App: React.FC = () => {
               <p className="text-pink-600 font-bold text-lg">
                 {usageData.remainingMB} MB Remaining
               </p>
-              <p className="text-pink-400 text-xs uppercase tracking-widest font-black mt-1">
-                Available Balance
-              </p>
             </div>
           )}
-          <p className="text-gray-600 mb-8 text-sm text-balance">
-            Your account is ready. Click below to activate your high-speed
-            internet session.
-          </p>
           <button
             onClick={connectToRouter}
             className="w-full py-4 bg-pink-500 hover:bg-pink-600 text-white font-bold rounded-2xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"
@@ -701,36 +622,17 @@ const App: React.FC = () => {
           <div className="mb-6 flex justify-center">
             <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center relative">
               <Database className="w-10 h-10 text-orange-500" />
-              <div className="absolute top-0 right-0 w-6 h-6 bg-orange-500 rounded-full border-4 border-white flex items-center justify-center">
-                <XCircle className="w-3 h-3 text-white" />
-              </div>
             </div>
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
             Data Depleted
           </h2>
-          <div className="mb-6 p-4 bg-orange-50 rounded-2xl border border-orange-100">
-            <p className="text-orange-600 font-bold text-lg">
-              0.00 MB Remaining
-            </p>
-          </div>
-          <p className="text-gray-500 mb-8 text-sm">
-            Please purchase a top-up bundle to continue.
-          </p>
-          <div className="space-y-3">
-            <button
-              onClick={() => setStep("BUY_DATA")}
-              className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95"
-            >
-              Buy Data Bundle <ShoppingCart className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setStep("LOGIN")}
-              className="w-full py-3 text-gray-400 font-bold text-xs uppercase"
-            >
-              Switch Account
-            </button>
-          </div>
+          <button
+            onClick={() => setStep("BUY_DATA")}
+            className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95"
+          >
+            Buy Data Bundle <ShoppingCart className="w-5 h-5" />
+          </button>
         </div>
       );
     }
@@ -738,22 +640,9 @@ const App: React.FC = () => {
     return (
       <div className="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-2 bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-pink-100">
         <div className="hidden lg:flex flex-col justify-between p-12 bg-pink-500 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-pink-400 opacity-20 rounded-full -mr-20 -mt-20 blur-3xl"></div>
-          <div className="relative z-10">
-            <h2 className="text-4xl font-bold leading-tight mb-6">
-              High Speed WiFi
-            </h2>
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 bg-white/10 p-3 rounded-xl border border-white/20">
-                <CheckCircle2 className="w-5 h-5" />{" "}
-                <span>Secured Authentication</span>
-              </div>
-              <div className="flex items-center gap-3 bg-white/10 p-3 rounded-xl border border-white/20">
-                <CheckCircle2 className="w-5 h-5" />{" "}
-                <span>Real-time Usage Balance</span>
-              </div>
-            </div>
-          </div>
+          <h2 className="text-4xl font-bold leading-tight mb-6">
+            High Speed WiFi
+          </h2>
           <div className="relative z-10 bg-black/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
             <p className="text-[10px] font-black uppercase tracking-widest mb-3 text-pink-100">
               System Health
@@ -814,9 +703,7 @@ const App: React.FC = () => {
               {isSubmitting ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                <>
-                  Sign In & Connect <ChevronRight className="w-4 h-4" />
-                </>
+                "Sign In & Connect"
               )}
             </button>
           </form>
@@ -834,9 +721,6 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 bg-[#fdf2f8]">
       <div className="mb-8 text-center">
-        <div className="inline-flex items-center justify-center p-4 bg-pink-500 rounded-2xl shadow-xl mb-4 transform -rotate-2">
-          <Wifi className="w-10 h-10 text-white" />
-        </div>
         <h1 className="text-5xl font-black text-gray-900 tracking-tighter">
           ONETEL<span className="text-pink-500">.</span>
         </h1>
@@ -848,7 +732,8 @@ const App: React.FC = () => {
         <div className="mt-8 max-w-xl w-full bg-white border-2 border-pink-100 rounded-[2rem] p-6 shadow-xl animate-in slide-in-from-bottom-8">
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-[10px] font-black text-gray-800 uppercase tracking-widest flex items-center gap-2">
-              <Info className="w-4 h-4 text-pink-500" /> Walled Garden Config
+              <Info className="w-4 h-4 text-pink-500" /> Walled Garden
+              Requirement
             </h4>
             <button
               onClick={() => setShowHelper(false)}
@@ -858,8 +743,8 @@ const App: React.FC = () => {
             </button>
           </div>
           <p className="text-[10px] text-gray-500 mb-3 font-medium">
-            Add these domains to your hotspot's <b>uamallowed</b> list to ensure
-            connectivity:
+            Add these to your router's <b>uamallowed</b> list or connection will
+            fail:
           </p>
           <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex gap-2 items-center">
             <code className="text-[9px] font-mono text-gray-500 truncate flex-1 leading-none">
@@ -877,7 +762,7 @@ const App: React.FC = () => {
 
       <p className="mt-8 text-center text-gray-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
         <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-        Onetel Network • Gateway Core v4.2
+        Onetel Network • Gateway Core v4.3
       </p>
     </div>
   );

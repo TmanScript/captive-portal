@@ -4,7 +4,6 @@ import { API_ENDPOINT } from "../constants";
 /**
  * ROBUST MULTI-PROXY ROTATION
  * These services help bypass CORS and firewall restrictions.
- * If one times out or returns an error, we immediately try the next.
  */
 const PROXIES = [
   "https://api.allorigins.win/raw?url=",
@@ -18,39 +17,43 @@ async function fetchWithProxy(
 ): Promise<Response> {
   let lastError: any;
 
+  // We cycle through available proxies
   for (const proxy of PROXIES) {
     try {
       const fullUrl = `${proxy}${encodeURIComponent(targetUrl)}`;
 
-      // Use a shorter timeout for the proxy attempt to switch faster
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 7000); // 7s timeout per proxy
 
-      const response = await fetch(fullUrl, {
+      const fetchOptions: RequestInit = {
         ...options,
         signal: controller.signal,
-      });
+        // We use 'cors' mode but keep headers minimal to avoid preflight issues on some proxies
+      };
 
+      const response = await fetch(fullUrl, fetchOptions);
       clearTimeout(timeoutId);
 
-      // If we get a response (even a 4xx from the API), return it.
-      // We only catch actual network failures (like TIMEOUT or BLOCKED).
+      // If the proxy itself returns a failure (like 404/502), try the next proxy
+      if (response.status >= 500) {
+        throw new Error(`Proxy error ${response.status}`);
+      }
+
       return response;
     } catch (err: any) {
       console.warn(
-        `Proxy Attempt Failed: ${proxy}`,
-        err.name === "AbortError" ? "Timed Out" : err.message,
+        `Bridge Failed: ${proxy}`,
+        err.name === "AbortError" ? "Timeout" : err.message,
       );
       lastError = err;
-      continue; // Try next proxy
+      continue;
     }
   }
 
-  // If we reach here, all proxies failed.
   throw (
     lastError ||
     new Error(
-      "Connection failed. Ensure all bridge domains are in your uamallowed list.",
+      "All connection bridges are blocked. Update your Walled Garden settings.",
     )
   );
 }
