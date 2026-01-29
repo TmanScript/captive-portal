@@ -78,18 +78,10 @@ const App: React.FC = () => {
   const [showHelper, setShowHelper] = useState(true);
 
   const [diagnostics, setDiagnostics] = useState<DomainStatus[]>([
-    {
-      domain: "api.allorigins.win",
-      label: "Primary Bridge",
-      status: "checking",
-    },
-    { domain: "corsproxy.io", label: "Backup Bridge", status: "checking" },
+    { domain: "api.allorigins.win", label: "AllOrigins", status: "checking" },
+    { domain: "corsproxy.io", label: "CorsProxy", status: "checking" },
+    { domain: "api.codetabs.com", label: "CodeTabs", status: "checking" },
     { domain: "device.onetel.co.za", label: "Auth Server", status: "checking" },
-    {
-      domain: "sandbox.payfast.co.za",
-      label: "Payment Gateway",
-      status: "checking",
-    },
   ]);
 
   const [uamParams, setUamParams] = useState({
@@ -105,7 +97,6 @@ const App: React.FC = () => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 4000);
-        // Use no-cors to check simple reachability
         await fetch(`https://${d.domain}/`, {
           mode: "no-cors",
           signal: controller.signal,
@@ -205,7 +196,9 @@ const App: React.FC = () => {
       }
     } catch (err) {
       setIsNetworkError(true);
-      setErrorMessage("Network error during registration. Check Bridges.");
+      setErrorMessage(
+        "Network error during registration. Check Walled Garden.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -268,7 +261,9 @@ const App: React.FC = () => {
       }
     } catch (err) {
       setIsNetworkError(true);
-      setErrorMessage("Network error. Bridges may be blocked by hotspot.");
+      setErrorMessage(
+        "Connection timed out. Ensure hotspot allows bridge domains.",
+      );
       runDiagnostics();
     } finally {
       setIsSubmitting(false);
@@ -403,7 +398,7 @@ const App: React.FC = () => {
   };
 
   const WALLED_GARDEN =
-    "device.onetel.co.za,api.allorigins.win,corsproxy.io,sandbox.payfast.co.za,tmanscript.github.io,github.io,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,cdnjs.cloudflare.com,umoja.network.coova.org";
+    "device.onetel.co.za,api.allorigins.win,corsproxy.io,api.codetabs.com,sandbox.payfast.co.za,tmanscript.github.io,github.io,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,cdnjs.cloudflare.com,umoja.network.coova.org";
 
   const renderContent = () => {
     if (step === "BUY_DATA") {
@@ -862,6 +857,10 @@ const App: React.FC = () => {
               Dismiss
             </button>
           </div>
+          <p className="text-[10px] text-gray-500 mb-3 font-medium">
+            Add these domains to your hotspot's <b>uamallowed</b> list to ensure
+            connectivity:
+          </p>
           <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex gap-2 items-center">
             <code className="text-[9px] font-mono text-gray-500 truncate flex-1 leading-none">
               {WALLED_GARDEN}
@@ -878,7 +877,7 @@ const App: React.FC = () => {
 
       <p className="mt-8 text-center text-gray-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
         <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-        Onetel Network • Gateway Core v4.1
+        Onetel Network • Gateway Core v4.2
       </p>
     </div>
   );

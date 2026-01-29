@@ -2,13 +2,14 @@ import { RegistrationPayload, LoginPayload } from "../types";
 import { API_ENDPOINT } from "../constants";
 
 /**
- * MULTI-PROXY FALLBACK SYSTEM
- * Public CORS proxies can be unstable or blocked by specific hotspots.
- * We try the primary proxy, and if it fails (network error), we switch to a fallback.
+ * ROBUST MULTI-PROXY ROTATION
+ * These services help bypass CORS and firewall restrictions.
+ * If one times out or returns an error, we immediately try the next.
  */
 const PROXIES = [
   "https://api.allorigins.win/raw?url=",
   "https://corsproxy.io/?",
+  "https://api.codetabs.com/v1/proxy/?quest=",
 ];
 
 async function fetchWithProxy(
@@ -20,19 +21,37 @@ async function fetchWithProxy(
   for (const proxy of PROXIES) {
     try {
       const fullUrl = `${proxy}${encodeURIComponent(targetUrl)}`;
-      const response = await fetch(fullUrl, options);
-      // We return the response even if it's 4xx/5xx, as the API handler will deal with it.
-      // We only catch actual network failures (like BLOCKED by firewall).
+
+      // Use a shorter timeout for the proxy attempt to switch faster
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const response = await fetch(fullUrl, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      // If we get a response (even a 4xx from the API), return it.
+      // We only catch actual network failures (like TIMEOUT or BLOCKED).
       return response;
-    } catch (err) {
-      console.warn(`Proxy ${proxy} failed, trying next...`, err);
+    } catch (err: any) {
+      console.warn(
+        `Proxy Attempt Failed: ${proxy}`,
+        err.name === "AbortError" ? "Timed Out" : err.message,
+      );
       lastError = err;
-      continue;
+      continue; // Try next proxy
     }
   }
+
+  // If we reach here, all proxies failed.
   throw (
     lastError ||
-    new Error("All CORS proxies failed. Check hotspot walled garden.")
+    new Error(
+      "Connection failed. Ensure all bridge domains are in your uamallowed list.",
+    )
   );
 }
 
