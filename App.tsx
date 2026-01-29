@@ -28,7 +28,7 @@ import {
 import CryptoJS from "crypto-js";
 import Input from "./components/Input";
 import { RegistrationPayload, UsageResponse } from "./types";
-import { DEFAULT_PLAN_UUID } from "./constants";
+import { DEFAULT_PLAN_UUID, API_ENDPOINT } from "./constants";
 import {
   registerUser,
   requestOtp,
@@ -78,16 +78,16 @@ const App: React.FC = () => {
   const [showHelper, setShowHelper] = useState(true);
 
   const [diagnostics, setDiagnostics] = useState<DomainStatus[]>([
-    { domain: "corsproxy.io", label: "CORS Bridge", status: "checking" },
+    {
+      domain: "api.allorigins.win",
+      label: "Primary Bridge",
+      status: "checking",
+    },
+    { domain: "corsproxy.io", label: "Backup Bridge", status: "checking" },
     { domain: "device.onetel.co.za", label: "Auth Server", status: "checking" },
     {
       domain: "sandbox.payfast.co.za",
       label: "Payment Gateway",
-      status: "checking",
-    },
-    {
-      domain: "tmanscript.github.io",
-      label: "Portal Host",
       status: "checking",
     },
   ]);
@@ -105,6 +105,7 @@ const App: React.FC = () => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 4000);
+        // Use no-cors to check simple reachability
         await fetch(`https://${d.domain}/`, {
           mode: "no-cors",
           signal: controller.signal,
@@ -123,7 +124,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     runDiagnostics();
-    const interval = setInterval(runDiagnostics, 45000);
+    const interval = setInterval(runDiagnostics, 60000);
     return () => clearInterval(interval);
   }, [runDiagnostics]);
 
@@ -204,7 +205,7 @@ const App: React.FC = () => {
       }
     } catch (err) {
       setIsNetworkError(true);
-      setErrorMessage("Network error during registration.");
+      setErrorMessage("Network error during registration. Check Bridges.");
     } finally {
       setIsSubmitting(false);
     }
@@ -267,73 +268,106 @@ const App: React.FC = () => {
       }
     } catch (err) {
       setIsNetworkError(true);
-      setErrorMessage('Network error. Ensure "corsproxy.io" is allowed.');
+      setErrorMessage("Network error. Bridges may be blocked by hotspot.");
       runDiagnostics();
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const payfastUrlEncode = (str: string) => {
+    return encodeURIComponent(str.trim())
+      .replace(/%20/g, "+")
+      .replace(
+        /[!'()*]/g,
+        (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase(),
+      );
+  };
+
   const redirectToPayfast = (amount: number, itemName: string) => {
-    const merchantId = "10044903";
-    const merchantKey = "sehmxs4lv5yi3";
-    const passphrase = "onetel_sandbox_2026";
+    const merchantId = "10045357";
+    const merchantKey = "w2v8fpmfrxa9y";
+    const passphrase = "";
 
-    // Construct a safe absolute URL.
-    // Captive portals often return "null" for window.location.origin
-    let protocol = window.location.protocol;
-    if (protocol === "file:") protocol = "https:";
+    const PRODUCTION_URL = "https://tmanscript.github.io/captive-portal/";
+    const currentProtocol =
+      window.location.protocol === "http:" ? "http:" : "https:";
+    const currentHost = window.location.hostname;
 
-    let host = window.location.host;
-    if (!host || host === "null") host = "tmanscript.github.io";
+    const isValidHost =
+      currentHost &&
+      currentHost !== "null" &&
+      currentHost !== "localhost" &&
+      !currentHost.includes("127.0.0.1");
+    const safeBaseUrl = isValidHost
+      ? `${currentProtocol}//${window.location.host}${window.location.pathname.replace(/\/+$/, "")}/`
+      : PRODUCTION_URL;
 
-    let pathname = window.location.pathname;
-    if (!pathname || pathname === "blank") pathname = "/captive-portal/";
-
-    const safeBaseUrl = `${protocol}//${host}${pathname}`;
-    const returnUrl = safeBaseUrl;
-    const cancelUrl = safeBaseUrl;
-
-    // Parameters MUST be in this specific order for Payfast signature consistency
     const data: Record<string, string> = {
       merchant_id: merchantId,
       merchant_key: merchantKey,
-      return_url: returnUrl,
-      cancel_url: cancelUrl,
+      return_url: safeBaseUrl,
+      cancel_url: safeBaseUrl,
+      notify_url:
+        "https://device.onetel.co.za/api/v1/radius/organization/umoja/account/payment/notify/",
+      name_first: (formData.first_name || "Guest").substring(0, 100),
+      name_last: (formData.last_name || "User").substring(0, 100),
+      email_address: (formData.email || "guest@onetel.co.za").substring(0, 100),
+      cell_number: (
+        formData.phone_number ||
+        loginData.username ||
+        "0000000000"
+      ).substring(0, 100),
+      m_payment_id: `ONETEL_${Date.now()}`,
       amount: amount.toFixed(2),
-      item_name: itemName,
+      item_name: itemName.substring(0, 100),
     };
 
-    // Construct signature string strictly
-    let signatureStr = "";
-    const keys = [
+    const orderedKeys = [
       "merchant_id",
       "merchant_key",
       "return_url",
       "cancel_url",
+      "notify_url",
+      "name_first",
+      "name_last",
+      "email_address",
+      "cell_number",
+      "m_payment_id",
       "amount",
       "item_name",
     ];
 
-    keys.forEach((key) => {
-      signatureStr += `${key}=${encodeURIComponent(data[key].trim()).replace(/%20/g, "+")}&`;
+    let signatureStr = "";
+    orderedKeys.forEach((key) => {
+      const val = data[key];
+      if (val !== undefined && val !== "") {
+        signatureStr += `${key}=${payfastUrlEncode(val)}&`;
+      }
     });
-    signatureStr += `passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, "+")}`;
 
-    const signature = CryptoJS.MD5(signatureStr).toString();
+    if (passphrase) {
+      signatureStr += `passphrase=${payfastUrlEncode(passphrase)}`;
+    } else {
+      signatureStr = signatureStr.substring(0, signatureStr.length - 1);
+    }
+
+    const signature = CryptoJS.MD5(signatureStr).toString().toLowerCase();
     data["signature"] = signature;
 
-    // Create form and submit via POST
     const form = document.createElement("form");
     form.method = "POST";
     form.action = "https://sandbox.payfast.co.za/eng/process";
+    form.target = "_top";
 
     Object.entries(data).forEach(([key, value]) => {
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = key;
-      input.value = value;
-      form.appendChild(input);
+      if (value !== "") {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = key;
+        input.value = value;
+        form.appendChild(input);
+      }
     });
 
     document.body.appendChild(form);
@@ -369,10 +403,9 @@ const App: React.FC = () => {
   };
 
   const WALLED_GARDEN =
-    "device.onetel.co.za,corsproxy.io,sandbox.payfast.co.za,tmanscript.github.io,github.io,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,cdnjs.cloudflare.com,umoja.network.coova.org";
+    "device.onetel.co.za,api.allorigins.win,corsproxy.io,sandbox.payfast.co.za,tmanscript.github.io,github.io,esm.sh,cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,cdnjs.cloudflare.com,umoja.network.coova.org";
 
   const renderContent = () => {
-    // Step: Buy Data
     if (step === "BUY_DATA") {
       return (
         <div className="max-w-2xl w-full bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-pink-100 animate-in zoom-in duration-300">
@@ -444,7 +477,6 @@ const App: React.FC = () => {
       );
     }
 
-    // Step: Registration
     if (step === "REGISTRATION") {
       return (
         <div className="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-2 bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-pink-100 animate-in fade-in duration-500">
@@ -577,7 +609,6 @@ const App: React.FC = () => {
       );
     }
 
-    // Step: OTP Verification
     if (step === "OTP_VERIFY") {
       return (
         <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl p-8 border border-pink-100 animate-in zoom-in duration-300">
@@ -634,7 +665,6 @@ const App: React.FC = () => {
       );
     }
 
-    // Step: Authenticated / Usage Info
     if (step === "SUCCESS" || (step === "USAGE_INFO" && usageData?.hasData)) {
       return (
         <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 text-center border-t-8 border-pink-500 animate-in zoom-in">
@@ -670,7 +700,6 @@ const App: React.FC = () => {
       );
     }
 
-    // Step: No Data
     if (step === "USAGE_INFO" && !usageData?.hasData) {
       return (
         <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 text-center border-t-8 border-orange-500 animate-in zoom-in">
@@ -711,7 +740,6 @@ const App: React.FC = () => {
       );
     }
 
-    // Default Step: Login
     return (
       <div className="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-2 bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-pink-100">
         <div className="hidden lg:flex flex-col justify-between p-12 bg-pink-500 text-white relative overflow-hidden">
@@ -850,7 +878,7 @@ const App: React.FC = () => {
 
       <p className="mt-8 text-center text-gray-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
         <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-        Onetel Network • Gateway Core v3.5
+        Onetel Network • Gateway Core v4.1
       </p>
     </div>
   );
